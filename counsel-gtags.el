@@ -91,6 +91,9 @@ arriving to Emacs.  This option is useful specially when using
 tramp and the candidates list is not huge."
   :type 'boolean)
 
+(defcustom counsel-gtags-use-pulse-momentary t
+  "Enable momentary highlight for the current line after a jump with counsel-gtags."
+  :type 'boolean)
 
 (defconst counsel-gtags--prompts-alist
   '((definition . "Find Definition: ")
@@ -290,6 +293,8 @@ Returns (buffer line)"
       ;; position correctly within the file
       (goto-char (point-min))
       (forward-line (1- line))
+      (if counsel-gtags-use-pulse-momentary
+	  (pulse-momentary-highlight-one-line (point)))
       (back-to-indentation)
       (if (and push
 	       (not counsel-gtags--other-window))
@@ -503,6 +508,8 @@ Return t on success, nil otherwise."
                 (t nil)))
       (goto-char (point-min))
       (forward-line (1- (plist-get context :line)))
+      (if counsel-gtags-use-pulse-momentary
+	  (pulse-momentary-highlight-one-line (point)))
       t)))
 
 ;;;###autoload
