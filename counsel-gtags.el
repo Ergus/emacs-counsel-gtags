@@ -517,10 +517,10 @@ Useful for jumping from a location when using global commands (like with
  'counsel-gtags-find-file
  '(("j" counsel-gtags--find-file-other-window "other window")))
 
-(defun counsel-gtags--goto (position)
-  "Go to POSITION in context stack.
-Return t on success, nil otherwise."
-  (counsel-gtags--goto-context (nth position counsel-gtags--context-stack)))
+(defsubst counsel-gtags--try-go (position)
+  "Try to go to context POSITION in stack."
+  (when (counsel-gtags--goto-context (nth position counsel-gtags--context-stack))
+    (setq counsel-gtags--context-position position)))
 
 ;;;###autoload
 (defun counsel-gtags-go-backward ()
@@ -528,13 +528,10 @@ Return t on success, nil otherwise."
   (interactive)
   (unless counsel-gtags--context-stack
     (user-error "Context stack is empty"))
-  (catch 'exit
-    (let ((position counsel-gtags--context-position)
-          (num-entries (length counsel-gtags--context-stack)))
-      (while (< (cl-incf position) num-entries)
-        (when (counsel-gtags--goto position)
-          (setq counsel-gtags--context-position position)
-          (throw 'exit t))))))
+  (let ((position counsel-gtags--context-position)
+        (num-entries (length counsel-gtags--context-stack)))
+    (while (and (< (cl-incf position) num-entries)
+		(not (counsel-gtags--try-go position))))))
 
 ;;;###autoload
 (defun counsel-gtags-go-forward ()
@@ -542,12 +539,9 @@ Return t on success, nil otherwise."
   (interactive)
   (unless counsel-gtags--context-stack
     (user-error "Context stack is empty"))
-  (catch 'exit
-    (let ((position counsel-gtags--context-position))
-      (while (>= (cl-decf position) 0)
-        (when (counsel-gtags--goto position)
-          (setq counsel-gtags--context-position position)
-          (throw 'exit t))))))
+  (let ((position counsel-gtags--context-position))
+    (while (and (>= (cl-decf position) 0)
+		(not (counsel-gtags--try-go position))))))
 
 (defun counsel-gtags--push (new-context)
   "Add new entry to context stack. ."
