@@ -32,6 +32,7 @@
 (require 'cl-lib)
 (require 'rx)
 (require 'seq)
+(require 'pulse)
 
 (declare-function cygwin-convert-file-name-from-windows "cygw32.c")
 (declare-function cygwin-convert-file-name-to-windows "cygw32.c")
@@ -264,7 +265,8 @@ global. Line number is returned as number (and not string)."
 
     (when (and file line)
       (list :file (counsel-gtags--resolve-actual-file-from file)
-	    :line line))))
+	    :line line
+	    :direction 'to))))
 
 (defun counsel-gtags--resolve-actual-file-from (file-candidate)
   "Resolve actual file path from CANDIDATE taken from a global cmd query.
@@ -286,12 +288,13 @@ FILE-CANDIDATE is supposed to be *only* the file part of a candidate."
 If context is new probably won't have a :buffer field, so this
 function will add this information correctly."
   (when-let* ((find-file-suppress-same-file-warnings t)
-	      (file (plist-get context :file))
-	      (buffer (or (and (plist-get context :buffer) ;; Use buffer
-			       (buffer-live-p (plist-get context :buffer))
+	      (buffer (or (and (buffer-live-p (plist-get context :buffer))
 			       (plist-get context :buffer))
-			  (or (get-file-buffer file)
-			      (find-file-noselect file)))))
+			  (or (get-file-buffer (plist-get context :file))
+			      (find-file-noselect (plist-get context :file))))))
+    ;; This rectifies that the buffer and the file are the same.
+    ;; Somehow this information is redundant and will be removed in
+    ;; the future.
     (plist-put context :buffer buffer)
     (if counsel-gtags--other-window
 	(switch-to-buffer-other-window buffer)
@@ -314,7 +317,6 @@ Returns (buffer line)"
 				default-directory)))
 	(context (counsel-gtags--file-and-line candidate)))
     (when (counsel-gtags--goto-context context)
-      (plist-put context :direction 'to)
       (unless (or no-push counsel-gtags--other-window)
 	  (counsel-gtags--push context))
       ;; position correctly within the file
