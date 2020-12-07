@@ -304,7 +304,7 @@ function will add this information correctly."
 	(pulse-momentary-highlight-one-line (point)))
     t))
 
-(defun counsel-gtags--jump-to-candidate (candidate)
+(defun counsel-gtags--jump-to-candidate (candidate &optional no-push)
   "Call `find-file' and `forward-line' on file location from CANDIDATE .
 
 Calls `counsel-gtags--push' at the end if PUSH is non-nil.
@@ -315,7 +315,7 @@ Returns (buffer line)"
 	(context (counsel-gtags--file-and-line candidate)))
     (when (counsel-gtags--goto-context context)
       (plist-put context :direction 'to)
-      (if (not counsel-gtags--other-window)
+      (unless (or no-push counsel-gtags--other-window)
 	  (counsel-gtags--push context))
       ;; position correctly within the file
       context)))

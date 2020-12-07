@@ -400,13 +400,13 @@ tested with a call to `shell-command-to-string' and `split-string' like
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/2"
   (counsel-gtags--with-mock-project
    (save-window-excursion
-     (let ((default-directory (counsel-gtags--default-directory)))
-       (cl-multiple-value-bind (the-buffer  the-line)
-	   (counsel-gtags--jump-to "./main.c:11:void another_global_fun(){" nil)
-	 (should (string-equal
-		  (file-name-nondirectory (buffer-file-name the-buffer))
-		  "main.c"))
-	 (should (equal the-line 11)))))))
+     (let ((default-directory (counsel-gtags--default-directory))
+	   (context (counsel-gtags--jump-to-candidate "./main.c:11:void another_global_fun(){" t)))
+       (should context)
+       (should (string-equal
+		(file-name-nondirectory (buffer-file-name (plist-get context :buffer)))
+		"main.c"))
+       (should (equal (plist-get context :line) 11))))))
 
 (ert-deftest select-remote-file ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/1#issuecomment-481333499"
@@ -416,7 +416,7 @@ tested with a call to `shell-command-to-string' and `split-string' like
      (unwind-protect;; https://curiousprogrammer.wordpress.com/2009/06/08/error-handling-in-emacs-lisp/
 	 (let ((remote-buffer
 		(find-file (format "/ssh:localhost:%s"
-			      (file-truename main-file-path)))))
+				   (file-truename main-file-path)))))
 	   (save-window-excursion
 	     (with-current-buffer remote-buffer
 	       (let* ((root (counsel-gtags--default-directory)))
@@ -428,13 +428,12 @@ tested with a call to `shell-command-to-string' and `split-string' like
 			(extra-options)
 			(auto-select-single-candidate t)
 			(collection (counsel-gtags--collect-candidates
-				      type tagname extra-options)))
-		   (should
-		    (= (length collection) 1))
-		   (cl-multiple-value-bind (the-buffer the-line)
-		       (counsel-gtags--jump-to (car collection) nil)
+				     type tagname extra-options)))
+		   (should (= (length collection) 1))
+		   (let ((context (counsel-gtags--jump-to-candidate (car collection) t)))
+		     (should context)
 		     (should
-		      (file-remote-p (buffer-file-name the-buffer)))))))))))))
+		      (file-remote-p (buffer-file-name (plist-get context :buffer))))))))))))))
 
 (ert-deftest select-candidate ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/8"
