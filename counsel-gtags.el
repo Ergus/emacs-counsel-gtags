@@ -111,14 +111,15 @@ tramp and the candidates list is not huge."
 
 
 (defvar counsel-gtags--last-update-time 0)
-(defvar counsel-gtags--context nil)
+(defvar counsel-gtags--context-stack nil)
 (defvar counsel-gtags--other-window nil
   "Helper global variable to implement other-window functions.
 
 This variable is supposed to be used only as a forward
 declaration.  It's global value must be always null and set it
-with `let' otherwise.  When `non-nil' `counsel-gtags--jump-to'
-uses `find-file-other-window' instead of `find-file.'")
+with `let' otherwise.  When `non-nil'
+`counsel-gtags--jump-to-candidate' uses `find-file-other-window'
+instead of `find-file.'")
 (defvar counsel-gtags--original-default-directory nil
   "Last `default-directory' where command is invoked.")
 
@@ -251,13 +252,19 @@ Inspired on ivy.org's `counsel-locate-function'."
 
 Candidates are supposed to be strings of the form \"file:line\" as returned by
 global. Line number is returned as number (and not string)."
-  (if (and (memq system-type '(windows-nt ms-dos))  ;; in MS windows
-           (string-match-p "\\`[a-zA-Z]:" candidate)) ;; Windows Driver letter
-      (when (string-match "\\`\\([^:]+:[^:]+:\\):\\([^:]+\\)" candidate)
-        (list (match-string-no-properties 1)
-              (string-to-number (match-string-no-properties 2))))
-    (let ((fields (split-string candidate ":")))
-      (list (car fields) (string-to-number (or (cadr fields) "1"))))))
+  (let (file line)
+    (if (and (memq system-type '(windows-nt ms-dos))  ;; in MS windows
+             (string-match-p "\\`[a-zA-Z]:" candidate)) ;; Windows Driver letter
+	(when (string-match "\\`\\([^:]+:[^:]+:\\):\\([^:]+\\)" candidate)
+          (setq file (match-string-no-properties 1)
+		line (string-to-number (match-string-no-properties 2))))
+      (let ((fields (split-string candidate ":")))
+	(setq file (car fields)
+              line (string-to-number (or (cadr fields) "1")))))
+
+    (when (and file line)
+      (list :file (counsel-gtags--resolve-actual-file-from file)
+	    :line line))))
 
 (defun counsel-gtags--resolve-actual-file-from (file-candidate)
   "Resolve actual file path from CANDIDATE taken from a global cmd query.
@@ -268,52 +275,68 @@ FILE-CANDIDATE is supposed to be *only* the file part of a candidate."
 	 (concat
 	  (pcase counsel-gtags-path-style
 	    ((or 'relative 'absolute 'abslib) "")
-	    ('through (file-name-as-directory
-		       (counsel-gtags--default-directory)))
-	    (_ (error
-		"Unexpected counsel-gtags-path-style: %s"
-		(symbol-name counsel-gtags-path-style))))
+	    ('through (file-name-as-directory (counsel-gtags--default-directory)))
+	    (_ (error "Unexpected counsel-gtags-path-style: %s"
+		      counsel-gtags-path-style)))
 	  file-candidate)))
     (file-truename file-path-per-style)))
 
-(defun counsel-gtags--jump-to (candidate &optional push)
+(defun counsel-gtags--goto-context (context)
+  "Find from CONTEXT info and go to line.
+If context is new probably won't have a :buffer field, so this
+function will add this information correctly."
+  (when-let* ((find-file-suppress-same-file-warnings t)
+	      (file (plist-get context :file))
+	      (buffer (or (and (plist-get context :buffer) ;; Use buffer
+			       (buffer-live-p (plist-get context :buffer))
+			       (plist-get context :buffer))
+			  (or (get-file-buffer file)
+			      (find-file-noselect file)))))
+    (plist-put context :buffer buffer)
+    (if counsel-gtags--other-window
+	(switch-to-buffer-other-window buffer)
+      (switch-to-buffer buffer))
+    (goto-char (point-min))
+    (ignore-errors
+      (beginning-of-line (plist-get context :line))
+      (back-to-indentation))
+    (if counsel-gtags-use-pulse-momentary
+	(pulse-momentary-highlight-one-line (point)))
+    t))
+
+(defun counsel-gtags--jump-to-candidate (candidate)
   "Call `find-file' and `forward-line' on file location from CANDIDATE .
 
 Calls `counsel-gtags--push' at the end if PUSH is non-nil.
 Returns (buffer line)"
-  (cl-multiple-value-bind (file-path line)
-      (counsel-gtags--file-and-line candidate)
-    (let* ((default-directory (file-name-as-directory
-			       (or counsel-gtags--original-default-directory
-				   default-directory)))
-	   (file (counsel-gtags--resolve-actual-file-from file-path))
-	   (opened-buffer (if counsel-gtags--other-window
-			      (find-file-other-window file)
-			    (find-file file))))
+  (let ((default-directory (file-name-as-directory
+			    (or counsel-gtags--original-default-directory
+				default-directory)))
+	(context (counsel-gtags--file-and-line candidate)))
+    (when (counsel-gtags--goto-context context)
+      (plist-put context :direction 'to)
+      (if (not counsel-gtags--other-window)
+	  (counsel-gtags--push context))
       ;; position correctly within the file
-      (goto-char (point-min))
-      (forward-line (1- line))
-      (if counsel-gtags-use-pulse-momentary
-	  (pulse-momentary-highlight-one-line (point)))
-      (back-to-indentation)
-      (if (and push
-	       (not counsel-gtags--other-window))
-	  (counsel-gtags--push 'to))
-      `(,opened-buffer ,line))))
+      context)))
 
-(defun counsel-gtags--find-file (candidate)
+(defun counsel-gtags--find-file-candidate (candidate)
   "Open file-at-position per CANDIDATE using `find-file'.
 This is the `:action' callback for `ivy-read' calls."
   (with-ivy-window
     (swiper--cleanup)
-    (counsel-gtags--push 'from))
-  (counsel-gtags--jump-to candidate 'push))
+    (counsel-gtags--push (list :file (and (buffer-file-name)
+					  (file-truename (buffer-file-name)))
+                               :buffer (current-buffer)
+                               :line (line-number-at-pos)
+                               :direction 'from)))
+  (counsel-gtags--jump-to-candidate candidate))
 
 (defun counsel-gtags--find-file-other-window (candidate)
   "Open file-at-position per CANDIDATE using `find-file-other-window'.
 This is the alternative `:action' callback for `ivy-read' calls."
   (let ((counsel-gtags--other-window t))
-    (counsel-gtags--find-file candidate)))
+    (counsel-gtags--find-file-candidate candidate t)))
 
 (defmacro counsel-gtags--read-tag (type)
   "Prompt the user for selecting a tag using `ivy-read'.
@@ -389,11 +412,11 @@ Extra command line parameters to global are forwarded through EXTRA-OPTIONS."
       (message "No candidate available for %s" tagname)
       nil)
      ((and auto-select-only-candidate (= (length collection) 1))
-      (counsel-gtags--find-file (car first)))
+      (counsel-gtags--find-file-candidate (car first)))
      (t
       (ivy-read "Pattern: "
 		collection
-		:action #'counsel-gtags--find-file
+		:action #'counsel-gtags--find-file-candidate
 		:caller 'counsel-gtags--select-file)))))
 (ivy-set-actions
  'counsel-gtags--select-file
@@ -481,7 +504,7 @@ Useful for jumping from a location when using global commands (like with
          (collection (counsel-gtags--collect-candidates 'file nil "--result=path ")))
     (ivy-read "Find File: " collection
 	      :initial-input initial-input
-	      :action #'counsel-gtags--find-file
+	      :action #'counsel-gtags--find-file-candidate
 	      :caller 'counsel-gtags-find-file)))
 
 (defun counsel-gtags-find-file-other-window (&optional filename)
@@ -497,30 +520,17 @@ Useful for jumping from a location when using global commands (like with
 (defun counsel-gtags--goto (position)
   "Go to POSITION in context stack.
 Return t on success, nil otherwise."
-  (let ((context (nth position counsel-gtags--context)))
-    (when (and context
-               (cond
-                ((plist-get context :file)
-                 (find-file (plist-get context :file)))
-                ((and (plist-get context :buffer)
-                      (buffer-live-p (plist-get context :buffer)))
-                 (switch-to-buffer (plist-get context :buffer)))
-                (t nil)))
-      (goto-char (point-min))
-      (forward-line (1- (plist-get context :line)))
-      (if counsel-gtags-use-pulse-momentary
-	  (pulse-momentary-highlight-one-line (point)))
-      t)))
+  (counsel-gtags--goto-context (nth position counsel-gtags--context-stack)))
 
 ;;;###autoload
 (defun counsel-gtags-go-backward ()
   "Go to previous position in context stack."
   (interactive)
-  (unless counsel-gtags--context
+  (unless counsel-gtags--context-stack
     (user-error "Context stack is empty"))
   (catch 'exit
     (let ((position counsel-gtags--context-position)
-          (num-entries (length counsel-gtags--context)))
+          (num-entries (length counsel-gtags--context-stack)))
       (while (< (cl-incf position) num-entries)
         (when (counsel-gtags--goto position)
           (setq counsel-gtags--context-position position)
@@ -530,7 +540,7 @@ Return t on success, nil otherwise."
 (defun counsel-gtags-go-forward ()
   "Go to next position in context stack."
   (interactive)
-  (unless counsel-gtags--context
+  (unless counsel-gtags--context-stack
     (user-error "Context stack is empty"))
   (catch 'exit
     (let ((position counsel-gtags--context-position))
@@ -539,25 +549,19 @@ Return t on success, nil otherwise."
           (setq counsel-gtags--context-position position)
           (throw 'exit t))))))
 
-(defun counsel-gtags--push (direction)
-  "Add new entry to context stack.
-
-  DIRECTION ∈ '(from, to)."
-  (let ((new-context (list :file (and (buffer-file-name)
-                                      (file-truename (buffer-file-name)))
-                           :buffer (current-buffer)
-                           :line (line-number-at-pos)
-                           :direction direction)))
-    (setq counsel-gtags--context
-          (nthcdr counsel-gtags--context-position counsel-gtags--context))
-    ;; We do not want successive entries with from-direction,
-    ;; so we remove the old one.
-    (let ((prev-context (car counsel-gtags--context)))
-      (if (and (eq direction 'from)
-               (eq (plist-get prev-context :direction) 'from))
-          (pop counsel-gtags--context)))
-    (push new-context counsel-gtags--context)
-    (setq counsel-gtags--context-position 0)))
+(defun counsel-gtags--push (new-context)
+  "Add new entry to context stack. ."
+  (message "pushing: %s" new-context)
+  (setq counsel-gtags--context-stack
+        (nthcdr counsel-gtags--context-position counsel-gtags--context-stack))
+  ;; We do not want successive entries with from-direction, so we
+  ;; remove the old one.
+  (let ((prev-context (car counsel-gtags--context-stack)))
+    (if (and (eq (plist-get new-context :direction) 'from)
+             (eq (plist-get prev-context :direction) 'from))
+        (pop counsel-gtags--context-stack)))
+  (push new-context counsel-gtags--context-stack)
+  (setq counsel-gtags--context-position 0))
 
 (defmacro counsel-gtags--make-gtags-sentinel (action)
   "Return default sentinel that messages success/failed exit.
