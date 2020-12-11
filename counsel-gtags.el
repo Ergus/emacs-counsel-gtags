@@ -599,13 +599,13 @@ Prompt for ROOTDIR and LABEL if not given.  This command is asynchronous."
 HOW-TO ∈ '(entire-update generate-other-directory single-update)
 per (user prefix)."
   (pcase how-to
-    (entire-update
+    ('entire-update
      (concat "global -u " counsel-gtags-global-extra-update-options-list))
-    (generate-other-directory
+    ('generate-other-directory
      (concat "gtags "
 	     counsel-gtags-global-extra-update-options-list
 	     (counsel-gtags--read-tag-directory)))
-    (single-update
+    ('single-update
      (concat "global --single-update "
 	     counsel-gtags-global-extra-update-options-list
 	     (counsel-gtags--remote-truename)))))
