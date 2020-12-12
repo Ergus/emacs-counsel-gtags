@@ -8,12 +8,12 @@ all: test
 # Use LC_ALL=C to avoid locale dependencies in the dates!
 test: clean
 	LC_ALL=C $(BEMACS) -l test/setup-unit-tests.el \
-	       -l counsel-gtags.el \
-	       -l test/unit-tests.el \
-	       -f ert-run-tests-batch-and-exit
+	      	-l counsel-gtags.el \
+	       	-l test/unit-tests.el \
+	       	-f ert-run-tests-batch-and-exit
 
 compile:
-	$(EMACS) -Q -batch -f batch-byte-compile counsel-gtags.el
+	$(EMACS) -batch -f batch-byte-compile counsel-gtags.el
 
 clean:
 	rm -f f.elc

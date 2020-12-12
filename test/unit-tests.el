@@ -178,7 +178,7 @@ int main{
 
 (ert-deftest 00-environment-have-grep-command ()
   "Assert that we have a grep tool of any kind"
-  (should (counsel-gtags--get-grep-command-find)))
+  (should (counsel-gtags--search-grep-command)))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actual testing
@@ -456,25 +456,31 @@ tested with a call to `shell-command-to-string' and `split-string' like
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/11"
   (ert--skip-unless (executable-find "ag"))
   (let ((counsel-gtags--get-grep-command nil)
-	(counsel-gtags--grep-commands-list '("ag" "grep" "rg")))
+	(counsel-gtags-grep-command-options-alist '(("ag" . "--nocolor")
+						    ("grep" . "--color=never")
+						    ("rg" . "--color never"))))
     (should
-     (string-suffix-p "ag --nocolor" (counsel-gtags--get-grep-command-find)))))
+     (string-suffix-p "ag --nocolor" (counsel-gtags--search-grep-command)))))
 
 (ert-deftest correct-no-color-option-for-grep ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/11"
   (ert--skip-unless (executable-find "grep"))
   (let ((counsel-gtags--get-grep-command nil)
-	(counsel-gtags--grep-commands-list '("grep" "rg" "ag")))
+	(counsel-gtags-grep-command-options-alist '(("grep" . "--color=never")
+						    ("rg" . "--color never")
+						    ("ag" . "--nocolor"))))
     (should
-     (string-suffix-p "grep --color=never" (counsel-gtags--get-grep-command-find)))))
+     (string-suffix-p "grep --color=never" (counsel-gtags--search-grep-command)))))
 
 (ert-deftest correct-no-color-option-for-rg ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/11"
   (ert--skip-unless (executable-find "rg"))
   (let ((counsel-gtags--get-grep-command nil)
-	(counsel-gtags--grep-commands-list '("rg" "ag" "grep")))
+	(counsel-gtags-grep-command-options-alist '(("rg" . "--color never")
+						    ("ag" . "--nocolor")
+						    ("grep" . "--color=never"))))
     (should
-     (string-suffix-p "rg --color never" (counsel-gtags--get-grep-command-find)))))
+     (string-suffix-p "rg --color never" (counsel-gtags--search-grep-command)))))
 
 (ert-deftest propertized-argument-confuses-ivy ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/15"

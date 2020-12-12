@@ -43,6 +43,78 @@
   "`counsel' for GNU Global"
   :group 'counsel)
 
+;; Grep commands
+(defcustom counsel-gtags-grep-command-options-alist
+  '(("rg" . "--color never")
+    ("ag" . "--nocolor")
+    ("grep" . "--color=never"))
+  "List of grep-like commands with their options to suppress colored output.")
+
+(defun counsel-gtags--search-grep-command (&optional remote)
+  "Search for the grep command.
+
+If REMOTE is set means to look in the remote system.  The search
+is performed in order based on `counsel-gtags-grep-command-options-alist'."
+  (catch 'path
+    (mapc
+     (lambda (pair)
+       (let* ((path (executable-find (car pair) remote)))
+	 (when path
+	   (throw 'path
+		  (concat path " " (cdr pair))))))
+     counsel-gtags-grep-command-options-alist)
+    (error "Trying to use grep filtering, but not grep command")
+    nil))
+
+(defcustom counsel-gtags-grep-command
+  (counsel-gtags--search-grep-command nil) ;; Search locally only here.
+  "Location of GNU global executable."
+  :type 'string)
+
+(defvar-local counsel-gtags--grep-command 'unknown
+  "Cached `grep' command to use found in the system.
+
+This is cached to avoid repeat search in the system and improve
+performance.  The value is initialized in the first call to
+counsel-gtags--grep-command-p.")
+
+(defun counsel-gtags--grep-command ()
+  "Get a grep command to be used to filter candidates.
+
+Returns the command and the options as specified in
+`counsel-gtags-grep-command-options-alist'.  Otherwise, returns
+nil if couldn't find any.  The value is cched for local files and
+as a connection-local variable for remote ones to reduce the
+calls to `executable-find'."
+  (cond ((not (eq counsel-gtags--grep-command 'unknown)) ;; Search only the first time
+	 counsel-gtags--grep-command)
+	((and (version<= "27" emacs-version)           ;; can search remotely to set
+              (file-remote-p default-directory))
+
+	 ;; Try to set/reuse connection local variables
+	 (with-connection-local-variables
+	  (if (boundp 'counsel-gtags--grep-command-connection)
+	      ;; use if defined as connection-local
+              (setq-local counsel-gtags--grep-command
+			  counsel-gtags--grep-command-connection)
+
+	    ;; Else search and set as connection local for next uses.
+	    (setq-local counsel-gtags--grep-command
+			(counsel-gtags--search-grep-command t))
+
+	    (let* ((host (file-remote-p default-directory 'host))
+		   (symvars (intern (concat host "-gtags")))) ;; profile name
+
+              (connection-local-set-profile-variables
+               symvars
+               `((counsel-gtags--grep-command-connection . ,counsel-gtags--grep-command)))
+
+              (connection-local-set-profiles `(:machine ,host) symvars)))))
+	(t
+	 (setq-local counsel-gtags--grep-command counsel-gtags-grep-command))))
+
+;; global command
+
 (defconst counsel-gtags-path-styles-list '(through relative absolute abslib))
 
 (defcustom counsel-gtags-path-style 'through
@@ -110,7 +182,6 @@ tramp and the candidates list is not huge."
     (reference . "-r")
     (symbol    . "-s")))
 
-
 (defvar counsel-gtags--last-update-time 0)
 (defvar counsel-gtags--context-stack nil)
 (defvar counsel-gtags--other-window nil
@@ -125,26 +196,6 @@ instead of `find-file.'")
   "Last `default-directory' where command is invoked.")
 
 (defvar-local counsel-gtags--context-position 0)
-(defvar-local counsel-gtags--get-grep-command nil
-  "Grep command to use found in the system.
-
-This is cached to avoid repeat search in the system and improve
-performance.  The value is initialized in
-counsel-gtags--get-grep-command-find.")
-
-(defconst counsel-gtags--grep-commands-list '("rg" "ag" "grep")
-  "List of grep-like commands to filter candidates.
-
-The first command available is used to do the filtering.  `grep-command', if
-non-nil and available, has a higher priority than any entries in this list.
-Use `counsel-gtags--grep-options' to specify the options
-to suppress colored output.")
-
-(defconst counsel-gtags--grep-options-alist
-  '(("rg" . "--color never")
-    ("ag" . "--nocolor")
-    ("grep" . "--color=never"))
-  "List of grep-like commands with their options to suppress colored output.")
 
 (defconst counsel-gtags--labels
   '("default" "native" "ctags" "pygments")
@@ -182,47 +233,21 @@ precedence over default \"--result=grep\"."
     (counsel-gtags--debug-message "Options: %s" options)
     options))
 
-(defun counsel-gtags--get-grep-command-find ()
-  "Get a grep command to be used to filter candidates.
-
-Returns a command without arguments.
-Otherwise, returns nil if couldn't find any.
-
-Use `counsel-gtags--grep-commands-list' to specify a list of commands to be
-checked for availability."
-  (or counsel-gtags--get-grep-command        ;; Search only the first time
-      (setq-local counsel-gtags--get-grep-command
-		  (catch 'path
-		    (mapc (lambda (exec)
-			    (let ((path
-                                   (if (file-remote-p default-directory)
-                                       (if (version< "27.1" emacs-version)
-                                           (error "Tried to search for remote path for %s, but need at least Emacs 27.1" exec)
-                                         (executable-find exec t))
-                                     ;; not remote, search locally for executable
-                                     (executable-find exec))))
-			      (when path
-				(throw 'path
-				       (concat path " "
-					       (cdr (assoc-string exec counsel-gtags--grep-options-alist)))))))
-			  counsel-gtags--grep-commands-list)
-		    nil))))
-
 (defun counsel-gtags--build-command-to-collect-candidates (query)
   "Build command to collect condidates filtering by QUERY.
 
 Used in `counsel-gtags--[a]sync-tag-query'.  Call global \"list all
  tags\" and if QUERY is non-nil then forward to grep command (provided by
- `counsel-gtags--get-grep-command-find') to filter.  We use grep
+ `counsel-gtags--grep-command-find') to filter.  We use grep
  command because using ivy's default filter
  `counsel--async-filter' is too slow with lots of tags."
-  (concat "global -c "
-	  (counsel-gtags--command-options 'definition query nil)
-	  (and query  ;; Conditionally filter the list with grep.
-	       (concat " | "
-		       (counsel-gtags--get-grep-command-find)
-		       " "
-		       (shell-quote-argument (counsel--elisp-to-pcre (ivy--regex query)))))))
+  (let ((grep-command (and query
+			   (counsel-gtags--grep-command))))
+    (concat "global -c "
+	    (counsel-gtags--command-options 'definition query nil)
+	    (and grep-command  ;; Try using grep commands only when available and query.
+		 (concat " | " grep-command " "
+			 (shell-quote-argument (counsel--elisp-to-pcre (ivy--regex query))))))))
 
 
 (defun counsel-gtags--async-tag-query (query)
