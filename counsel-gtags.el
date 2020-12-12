@@ -648,19 +648,6 @@ per (user prefix)."
 	     counsel-gtags-global-extra-update-options-list
 	     (counsel-gtags--remote-truename)))))
 
-(defsubst counsel-gtags--update-tags-p (how-to interactive-p)
-  "Should we update tags now?.
-
-  Will update if being called interactively per INTERACTIVE-P.
-  If HOW-TO equals 'single-update, will update only if
-  `counsel-gtags-update-interval-second' seconds have passed up to CURRENT-TIME."
-  (or interactive-p
-      (and (eq how-to 'single-update)
-           (buffer-file-name)
-           (or (not counsel-gtags-update-interval-second)
-               (>= (- (float-time (current-time)) counsel-gtags--last-update-time)
-                   counsel-gtags-update-interval-second)))))
-
 ;;;###autoload
 (defun counsel-gtags-update-tags ()
   "Update tag database for current file.
@@ -672,8 +659,12 @@ database in prompted directory."
 		  (4 'entire-update)
 		  (16 'generate-other-directory)
 		  (otherwise 'single-update))))
-    (when (counsel-gtags--update-tags-p how-to
-					(called-interactively-p 'interactive))
+    (when (or (called-interactively-p 'interactive)
+	      (and (eq how-to 'single-update)
+		   buffer-file-name
+		   (>= (- (float-time (current-time)) counsel-gtags--last-update-time)
+		       (or counsel-gtags-update-interval-second 0))))
+
       (counsel--async-command-1 (counsel-gtags--update-tags-command how-to)
 				(counsel-gtags--make-gtags-sentinel 'update)
 				#'internal-default-process-filter
@@ -723,12 +714,12 @@ its definition."
   "Minor mode of counsel-gtags.
   If `counsel-gtags-update-tags' is non-nil, the tag files are updated
   after saving buffer."
-  :keymap     counsel-gtags-mode-map
+  :keymap counsel-gtags-mode-map
   (if counsel-gtags-mode
       (when counsel-gtags-auto-update
-        (add-hook 'after-save-hook 'counsel-gtags-update-tags nil t))
+        (add-hook 'after-save-hook #'counsel-gtags-update-tags nil t))
     (when counsel-gtags-auto-update
-      (remove-hook 'after-save-hook 'counsel-gtags-update-tags t))))
+      (remove-hook 'after-save-hook #'counsel-gtags-update-tags t))))
 
 (provide 'counsel-gtags)
 
