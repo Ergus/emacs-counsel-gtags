@@ -460,7 +460,7 @@ tested with a call to `shell-command-to-string' and `split-string' like
 						    ("grep" . "--color=never")
 						    ("rg" . "--color never"))))
     (should
-     (string-suffix-p "ag --nocolor" (counsel-gtags--search-grep-command)))))
+     (string-suffix-p "ag --nocolor " (counsel-gtags--search-grep-command)))))
 
 (ert-deftest correct-no-color-option-for-grep ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/11"
@@ -470,7 +470,7 @@ tested with a call to `shell-command-to-string' and `split-string' like
 						    ("rg" . "--color never")
 						    ("ag" . "--nocolor"))))
     (should
-     (string-suffix-p "grep --color=never" (counsel-gtags--search-grep-command)))))
+     (string-suffix-p "grep --color=never " (counsel-gtags--search-grep-command)))))
 
 (ert-deftest correct-no-color-option-for-rg ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/11"
@@ -480,7 +480,7 @@ tested with a call to `shell-command-to-string' and `split-string' like
 						    ("ag" . "--nocolor")
 						    ("grep" . "--color=never"))))
     (should
-     (string-suffix-p "rg --color never" (counsel-gtags--search-grep-command)))))
+     (string-suffix-p "rg --color never " (counsel-gtags--search-grep-command)))))
 
 (ert-deftest propertized-argument-confuses-ivy ()
   "See https://github.com/FelipeLema/emacs-counsel-gtags/issues/15"

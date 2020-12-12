@@ -61,24 +61,48 @@ is performed in order based on `counsel-gtags-grep-command-options-alist'."
        (let* ((path (executable-find (car pair) remote)))
 	 (when path
 	   (throw 'path
-		  (concat path " " (cdr pair))))))
+		  (concat path " " (cdr pair) " ")))))
      counsel-gtags-grep-command-options-alist)
     (error "Trying to use grep filtering, but not grep command")
     nil))
 
-(defcustom counsel-gtags-grep-command
-  (counsel-gtags--search-grep-command nil) ;; Search locally only here.
-  "Location of GNU global executable."
-  :type 'string)
+(defconst counsel-gtags--grep-command-global
+  (counsel-gtags--search-grep-command nil)
+  "Grep command found in current host.")
 
-(defvar-local counsel-gtags--grep-command 'unknown
+(defvar-local counsel-gtags--grep-command-local 'unknown
   "Cached `grep' command to use found in the system.
 
 This is cached to avoid repeat search in the system and improve
 performance.  The value is initialized in the first call to
 counsel-gtags--grep-command-p.")
 
-(defun counsel-gtags--grep-command ()
+(defun counsel-gtags--search-connection-value (var-connection searcher)
+  "Search cached value for VAR-CONNECTION in connection local vars."
+  (if (boundp var-connection)
+      ;; connection local search happened before opening this
+      ;; buffer. So the connection var is set automatically.
+      (symbol-value var-connection)
+
+    ;; This file was opened before the first search, so var is not set automatically
+    (with-connection-local-variables
+     (if (boundp var-connection)
+	 ;; Someone already did the search, but after this buffer was opened.
+	 (symbol-value var-connection)
+
+       ;; Else search and set as connection local for next uses.
+       (let* ((executable (counsel-gtags--search-grep-command t))
+	      (host (file-remote-p default-directory 'host))
+	      (symvars (intern (concat host "-gtags"))))      ;; profile name
+
+	 (connection-local-set-profile-variables
+          symvars
+          `((,var-connection . ,executable)))
+
+	 (connection-local-set-profiles `(:machine ,host) symvars)
+	 executable)))))
+
+(defun counsel-gtags--grep-command-p ()
   "Get a grep command to be used to filter candidates.
 
 Returns the command and the options as specified in
@@ -86,34 +110,20 @@ Returns the command and the options as specified in
 nil if couldn't find any.  The value is cched for local files and
 as a connection-local variable for remote ones to reduce the
 calls to `executable-find'."
-  (cond ((not (eq counsel-gtags--grep-command 'unknown)) ;; Search only the first time
-	 counsel-gtags--grep-command)
+  (cond ((not (eq counsel-gtags--grep-command-local 'unknown)) ;; Search only the first time
+	 counsel-gtags--grep-command-local)
 	((and (version<= "27" emacs-version)           ;; can search remotely to set
               (file-remote-p default-directory))
-
 	 ;; Try to set/reuse connection local variables
-	 (with-connection-local-variables
-	  (if (boundp 'counsel-gtags--grep-command-connection)
-	      ;; use if defined as connection-local
-              (setq-local counsel-gtags--grep-command
-			  counsel-gtags--grep-command-connection)
-
-	    ;; Else search and set as connection local for next uses.
-	    (setq-local counsel-gtags--grep-command
-			(counsel-gtags--search-grep-command t))
-
-	    (let* ((host (file-remote-p default-directory 'host))
-		   (symvars (intern (concat host "-gtags")))) ;; profile name
-
-              (connection-local-set-profile-variables
-               symvars
-               `((counsel-gtags--grep-command-connection . ,counsel-gtags--grep-command)))
-
-              (connection-local-set-profiles `(:machine ,host) symvars)))))
+	 (setq-local counsel-gtags--grep-command-local
+		     (counsel-gtags--search-connection-value
+		      'counsel-gtags--grep-command-connection)))
 	(t
-	 (setq-local counsel-gtags--grep-command counsel-gtags-grep-command))))
+	 (setq-local counsel-gtags--grep-command-local
+		     counsel-gtags--grep-command-global))))
 
 ;; global command
+
 
 (defconst counsel-gtags-path-styles-list '(through relative absolute abslib))
 
@@ -242,11 +252,11 @@ Used in `counsel-gtags--[a]sync-tag-query'.  Call global \"list all
  command because using ivy's default filter
  `counsel--async-filter' is too slow with lots of tags."
   (let ((grep-command (and query
-			   (counsel-gtags--grep-command))))
+			   (counsel-gtags--grep-command-p))))
     (concat "global -c "
 	    (counsel-gtags--command-options 'definition query nil)
 	    (and grep-command  ;; Try using grep commands only when available and query.
-		 (concat " | " grep-command " "
+		 (concat " | " grep-command
 			 (shell-quote-argument (counsel--elisp-to-pcre (ivy--regex query))))))))
 
 
