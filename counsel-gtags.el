@@ -402,15 +402,15 @@ See `counsel-gtags--async-tag-query' for more info."
 `process-lines' does not support Tramp because it uses `call-process'.  Using
 `process-file' makes Tramp support auto-magical."
   ;; Space before buffer name to make it "invisible"
-  (let* ((global-run-buffer (get-buffer-create (format " *global @ %s*" default-directory)))
-	 (lines (progn
-		  (with-current-buffer global-run-buffer
-		    (erase-buffer))
-		  (process-file-shell-command command nil global-run-buffer nil)
-		  (with-current-buffer global-run-buffer
-		    (split-string (buffer-string) "\n" t)))))
-    (counsel-gtags--debug-message "process-lines command: %s" command)
-    lines))
+  (let* ((caller-buffer (current-buffer)))
+    (with-temp-buffer
+      (let ((temp-buffer (current-buffer)))
+
+	(with-current-buffer caller-buffer
+	  (process-file-shell-command command nil temp-buffer nil)
+	  (counsel-gtags--debug-message "process-lines command: %s" command))
+
+	(split-string (buffer-string) "\n" t)))))
 
 (defun counsel-gtags--collect-candidates (type tagname extra-options)
   "Collect lines for ⎡global …⎦ using TAGNAME as query.
