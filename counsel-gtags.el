@@ -29,9 +29,7 @@
 ;;; Code:
 
 (require 'counsel)
-(require 'cl-lib)
 (require 'rx)
-(require 'seq)
 (require 'pulse)
 
 (declare-function cygwin-convert-file-name-from-windows "cygw32.c")
@@ -524,14 +522,14 @@ Prompt for TAGNAME if not given."
 Useful for jumping from a location when using global commands (like with
 \"--from-here\")."
   (setq counsel-gtags--original-default-directory
-        (cl-case counsel-gtags-path-style
-          ((relative absolute) default-directory)
-          (through (or (getenv "GTAGSROOT")
-		       (locate-dominating-file default-directory "GTAGS")
-		       ;; If file doesn't exist create it?
-		       (if (yes-or-no-p "File GTAGS not found. Run 'gtags'? ")
-			   (call-interactively 'counsel-gtags-create-tags)
-			 (error "Abort generating tag files")))))))
+        (pcase counsel-gtags-path-style
+          ((or 'relative 'absolute) default-directory)
+          ('through (or (getenv "GTAGSROOT")
+			(locate-dominating-file default-directory "GTAGS")
+			;; If file doesn't exist create it?
+			(if (yes-or-no-p "File GTAGS not found. Run 'gtags'? ")
+			    (call-interactively 'counsel-gtags-create-tags)
+			  (error "Abort generating tag files")))))))
 
 ;;;###autoload
 (defun counsel-gtags-find-file (&optional filename)
@@ -567,7 +565,7 @@ Useful for jumping from a location when using global commands (like with
     (user-error "Context stack is empty"))
   (let ((position counsel-gtags--context-position)
         (num-entries (length counsel-gtags--context-stack)))
-    (while (and (< (cl-incf position) num-entries)
+    (while (and (< (setq position (1+ position)) num-entries)
 		(not (counsel-gtags--try-go position))))))
 
 ;;;###autoload
@@ -577,7 +575,7 @@ Useful for jumping from a location when using global commands (like with
   (unless counsel-gtags--context-stack
     (user-error "Context stack is empty"))
   (let ((position counsel-gtags--context-position))
-    (while (and (>= (cl-decf position) 0)
+    (while (and (>= (setq position (1- position)) 0)
 		(not (counsel-gtags--try-go position))))))
 
 (defun counsel-gtags--push (new-context)
