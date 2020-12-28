@@ -32,8 +32,6 @@
 (require 'rx)
 (require 'pulse)
 
-(declare-function cygwin-convert-file-name-from-windows "cygw32.c")
-(declare-function cygwin-convert-file-name-to-windows "cygw32.c")
 (declare-function tramp-file-name-localname "tramp")
 (declare-function tramp-dissect-file-name "tramp")
 
@@ -75,30 +73,35 @@ This is cached to avoid repeat search in the system and improve
 performance.  The value is initialized in the first call to
 counsel-gtags--grep-command-p.")
 
-(defun counsel-gtags--search-connection-value (var-connection searcher)
+(defun counsel-gtags--search-connection-value (var-connection)
   "Search cached value for VAR-CONNECTION in connection local vars."
   (if (boundp var-connection)
       ;; connection local search happened before opening this
       ;; buffer. So the connection var is set automatically.
       (symbol-value var-connection)
 
-    ;; This file was opened before the first search, so var is not set automatically
-    (with-connection-local-variables
-     (if (boundp var-connection)
-	 ;; Someone already did the search, but after this buffer was opened.
-	 (symbol-value var-connection)
+    (let* ((enable-connection-local-variables t)
+	   (host (file-remote-p default-directory 'host))
+	   (criteria `(:machine ,host))
+	   (symvars (intern (concat host "-gtags")))
+	   connection-local-variables-alist
+	   pair executable)
 
-       ;; Else search and set as connection local for next uses.
-       (let* ((executable (counsel-gtags--search-grep-command t))
-	      (host (file-remote-p default-directory 'host))
-	      (symvars (intern (concat host "-gtags"))))      ;; profile name
+      ;; Writes to connection-local-variables-alist
+      (hack-connection-local-variables criteria)
 
-	 (connection-local-set-profile-variables
-          symvars
-          `((,var-connection . ,executable)))
+      (setq pair (assq var-connection connection-local-variables-alist))
+      (if pair
+	  (cdr pair)
 
-	 (connection-local-set-profiles `(:machine ,host) symvars)
-	 executable)))))
+	(setq executable (counsel-gtags--search-grep-command t))
+
+	(connection-local-set-profile-variables
+         symvars
+         `((,var-connection . ,executable)))
+
+	(connection-local-set-profiles `(:machine ,host) symvars)
+	executable))))
 
 (defun counsel-gtags--grep-command-p ()
   "Get a grep command to be used to filter candidates.
@@ -403,7 +406,6 @@ See `counsel-gtags--async-tag-query' for more info."
   (with-temp-buffer
     (counsel-gtags--debug-message "process-lines command: %s" command)
     (process-file-shell-command command  nil (current-buffer))
-    (counsel-gtags--debug-message "process-lines output: %s" (buffer-string))
     (split-string (buffer-string) "\n" t)))
 
 (defun counsel-gtags--collect-candidates (type tagname extra-options)
