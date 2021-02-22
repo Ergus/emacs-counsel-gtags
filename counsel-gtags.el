@@ -189,7 +189,13 @@ checked for availability."
       (setq-local counsel-gtags--get-grep-command
 		  (catch 'path
 		    (mapc (lambda (exec)
-			    (let ((path (executable-find exec t)))
+			    (let ((path
+                                   (if (file-remote-p default-directory)
+                                       (if (version< "27.1" emacs-version)
+                                           (error "Tried to search for remote path for %s, but need at least Emacs 27.1" exec)
+                                         (executable-find exec t))
+                                     ;; not remote, search locally for executable
+                                     (executable-find exec))))
 			      (when path
 				(throw 'path
 				       (concat path " "
