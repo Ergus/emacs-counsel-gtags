@@ -1,3 +1,9 @@
+## note
+
+GIVEN HOW HARD THIS CODE IS TO MAINTAIN, I'M DEPRECATING IT AND ADVICE YOU LOOK FOR SOMETHING ELSE. PRS ARE STILL WELCOME.
+
+YOU SHOULD CHECKOUT [global-tags.el](https://launchpad.net/global-tags.el) INSTEAD. THIS PACKAGE HAS BETTER MODULARITY, IS DECOUPLED FROM NARROWING FRAMEWORK (IVY, HELM) AND PLENTY OF UNIT TESTS AND INFRASTRUCTURE TO ADD NEW TESTS
+
 # counsel-gtags.el [![melpa badge][melpa-badge]][melpa-link] [![melpa stable badge][melpa-stable-badge]][melpa-stable-link] [![Build Status](https://travis-ci.org/FelipeLema/emacs-counsel-gtags.svg?branch=master)](https://travis-ci.org/FelipeLema/emacs-counsel-gtags)
 
 [GNU GLOBAL](https://www.gnu.org/software/global/) interface of [ivy](https://github.com/abo-abo/swiper).
